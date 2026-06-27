@@ -10,9 +10,14 @@ import { SelectionManager } from './SelectionManager.js';
 import { KeyboardHandler } from './KeyboardHandler.js';
 import { TouchControls } from './TouchControls.js';
 import { XRManager } from './XRManager.js';
+import { XRDiag } from './XRDiag.js';
 
 // ── Detect device first ────────────────────────────────────────────────────────
 const deviceInfo = await DeviceDetector.detect();
+
+// Diagnóstico disponible desde el inicio
+const xrDiag = new XRDiag();
+window.xrDiag = xrDiag;
 
 // ── Build renderer & scene immediately (before launch screen) ────────────────
 const canvas = document.getElementById('gl-canvas');
@@ -23,6 +28,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1;
 renderer.xr.enabled = true;
+window._renderer = renderer; // expuesto para XRDiag
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1a2e);
@@ -156,6 +162,18 @@ function initEnv(env) {
 
   // Always-visible VR button (bottom-right), works on Quest without launch screen
   buildFloatingVRButton();
+
+  // LOG button in topbar
+  const logBtn = document.createElement('button');
+  logBtn.className = 'mode-btn';
+  logBtn.innerHTML = '🔍 LOG';
+  logBtn.title = 'Diagnóstico XR — ver qué está fallando';
+  logBtn.style.cssText = 'margin-left:8px;border-color:#ffd43b;color:#ffd43b;';
+  logBtn.onclick = () => { xrDiag.show(); xrDiag.run(); };
+  document.getElementById('topbar').appendChild(logBtn);
+
+  // Auto-run diagnostic silently on load (fills log without showing panel)
+  xrDiag.run().catch(() => {});
 
   updateStatusBar();
 }
