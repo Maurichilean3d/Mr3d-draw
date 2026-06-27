@@ -20,8 +20,9 @@ export class XRManager {
     this._tempMatrix = new THREE.Matrix4();
     this._vrActive = false;
     this._arActive = false;
+    this._activeMode = null;
+    this._sessionPending = false;
     this._controllersSetup = false;
-    this._sessionListenersAdded = false;
 
     this._buildReticle();
     this._buildStatusOverlay();
@@ -64,60 +65,27 @@ export class XRManager {
       return;
     }
 
-    // Exit if already in session
     const current = this.renderer.xr.getSession();
     if (current) { current.end(); return; }
+    if (this._sessionPending) return;
 
-    // Check support before requesting (non-blocking check already done, but log it)
-    navigator.xr.isSessionSupported('immersive-vr').then(supported => {
-      if (!supported) {
-        this._showStatus(
-          '❌ Este navegador no soporta VR inmersivo.<br>' +
-          'En Meta Quest: usa <b>Meta Quest Browser</b><br>' +
-          'y asegúrate de que la página sea <b>HTTPS</b>.',
-          '#ff6b6b'
-        );
-        setTimeout(() => this._hideStatus(), 7000);
-        return;
-      }
-
-      // Listener deduplication
-      if (!this._sessionListenersAdded) {
-        this._sessionListenersAdded = true;
-        this.renderer.xr.addEventListener('sessionstart', () => {
-          this._vrActive = true;
-          this._hideStatus();
-          this._updateBtns('vr', true);
-          this.onEnter?.('vr');
-        });
-        this.renderer.xr.addEventListener('sessionend', () => {
-          this._vrActive = false;
-          this._updateBtns('vr', false);
-          this.onExit?.('vr');
-        });
-      }
-
-      // requestSession — called from .then() of isSessionSupported which is
-      // itself called synchronously from enterVR() which is called directly
-      // from the user click. Meta Quest Browser accepts this chain.
-      navigator.xr.requestSession('immersive-vr', {
+    // This call must happen in the original click stack. Checking support with
+    // an awaited promise first makes Quest Browser reject the user activation.
+    this._sessionPending = true;
+    let request;
+    try {
+      request = navigator.xr.requestSession('immersive-vr', {
         requiredFeatures: ['local-floor'],
         optionalFeatures: ['bounded-floor', 'hand-tracking'],
-      }).then(session => {
-        this._setupControllers();
-        return this.renderer.xr.setSession(session);
-      }).catch(err => {
-        console.error('[XR] VR session error:', err);
-        this._showStatus(
-          `❌ Error al iniciar VR:<br><code style="font-size:12px">${err.message || err}</code><br><br>` +
-          '• Verifica que la URL sea <b>HTTPS</b><br>' +
-          '• Usa <b>Meta Quest Browser</b> (no Chrome)<br>' +
-          '• Acepta el diálogo de permisos',
-          '#ff6b6b'
-        );
-        setTimeout(() => this._hideStatus(), 9000);
       });
-    });
+    } catch (err) {
+      this._sessionError(err, 'VR');
+      return;
+    }
+
+    request
+      .then(session => this._beginSession(session, 'vr'))
+      .catch(err => this._sessionError(err, 'VR'));
   }
 
   // ── AR ───────────────────────────────────────────────────────────────────────
@@ -133,46 +101,74 @@ export class XRManager {
 
     const current = this.renderer.xr.getSession();
     if (current) { current.end(); return; }
+    if (this._sessionPending) return;
 
-    navigator.xr.isSessionSupported('immersive-ar').then(supported => {
-      if (!supported) {
-        this._showStatus('❌ AR no soportado en este dispositivo.', '#ff6b6b');
-        setTimeout(() => this._hideStatus(), 5000);
-        return;
-      }
-
-      if (!this._arListenersAdded) {
-        this._arListenersAdded = true;
-        this.renderer.xr.addEventListener('sessionstart', () => {
-          this._arActive = true;
-          this._hideStatus();
-          this.scene.background = null;
-          this._updateBtns('ar', true);
-          this.onEnter?.('ar');
-        });
-        this.renderer.xr.addEventListener('sessionend', () => {
-          this._arActive = false;
-          this._reticle.visible = false;
-          this._hitTestSource = null;
-          this._hitTestSourceRequested = false;
-          this.scene.background = new THREE.Color(0x1a1a2e);
-          this._updateBtns('ar', false);
-          this.onExit?.('ar');
-        });
-      }
-
-      navigator.xr.requestSession('immersive-ar', {
+    this._sessionPending = true;
+    let request;
+    try {
+      request = navigator.xr.requestSession('immersive-ar', {
         requiredFeatures: ['hit-test'],
         optionalFeatures: ['dom-overlay'],
         domOverlay: { root: document.body },
-      }).then(session => {
-        return this.renderer.xr.setSession(session);
-      }).catch(err => {
-        console.error('[XR] AR session error:', err);
-        this._showStatus(`❌ Error AR: ${err.message || err}`, '#ff6b6b');
-        setTimeout(() => this._hideStatus(), 7000);
       });
-    });
+    } catch (err) {
+      this._sessionError(err, 'AR');
+      return;
+    }
+
+    request
+      .then(session => this._beginSession(session, 'ar'))
+      .catch(err => this._sessionError(err, 'AR'));
+  }
+
+  async _beginSession(session, mode) {
+    try {
+      session.addEventListener('end', () => this._endSession(mode), { once: true });
+      if (mode === 'vr') this._setupControllers();
+      await this.renderer.xr.setSession(session);
+
+      this._sessionPending = false;
+      this._activeMode = mode;
+      this._vrActive = mode === 'vr';
+      this._arActive = mode === 'ar';
+      if (mode === 'ar') this.scene.background = null;
+
+      this._hideStatus();
+      this._updateBtns(mode, true);
+      this.onEnter?.(mode);
+    } catch (err) {
+      try { await session.end(); } catch {}
+      this._sessionError(err, mode.toUpperCase());
+    }
+  }
+
+  _endSession(mode) {
+    this._sessionPending = false;
+    this._activeMode = null;
+    this._vrActive = false;
+    this._arActive = false;
+    this._reticle.visible = false;
+    this._hitTestSource?.cancel?.();
+    this._hitTestSource = null;
+    this._hitTestSourceRequested = false;
+    this._updateBtns(mode, false);
+    this.onExit?.(mode);
+  }
+
+  _sessionError(err, label) {
+    this._sessionPending = false;
+    console.error(`[XR] ${label} session error:`, err);
+    const reason = err?.name === 'NotSupportedError'
+      ? 'Este modo no está disponible en el dispositivo.'
+      : (err?.message || String(err));
+    this._showStatus(
+      `❌ Error al iniciar ${label}:<br><code style="font-size:12px">${reason}</code><br><br>` +
+      '• Abre el sitio por <b>HTTPS</b><br>' +
+      '• Usa <b>Meta Quest Browser</b><br>' +
+      '• Acepta el permiso de realidad virtual',
+      '#ff6b6b'
+    );
+    setTimeout(() => this._hideStatus(), 9000);
   }
 
   // ── Per-frame ────────────────────────────────────────────────────────────────
@@ -249,7 +245,7 @@ export class XRManager {
         if (this._arActive) this.placeObjectAR();
       });
       ctrl.addEventListener('squeezestart', () => {
-        if (i === 0) window.addPrimitive?.('cube');
+        if (i === 0) this._createCubeAtController(ctrl);
         else window.doDelete?.();
       });
 
@@ -271,13 +267,30 @@ export class XRManager {
     }
   }
 
+  _createCubeAtController(controller) {
+    const mesh = this.primFactory.create('cube');
+    const direction = new THREE.Vector3(0, 0, -1)
+      .applyQuaternion(controller.getWorldQuaternion(new THREE.Quaternion()));
+    controller.getWorldPosition(mesh.position);
+    mesh.position.addScaledVector(direction, 1.5);
+    mesh.scale.setScalar(0.25);
+    this.sceneMgr.select(mesh);
+    window.updateStatusBar?.();
+  }
+
   _updateBtns(mode, active) {
     const id = mode === 'vr' ? 'xr-vr-btn' : 'xr-ar-btn';
     const btn = document.getElementById(id);
-    if (!btn) return;
-    btn.disabled = false;
-    if (mode === 'vr') btn.textContent = active ? '⏹ Salir de VR' : '🥽 Entrar en VR';
-    else btn.textContent = active ? '⏹ Salir de AR' : '📷 Entrar en AR';
+    if (btn) {
+      btn.disabled = false;
+      if (mode === 'vr') btn.textContent = active ? '⏹ Salir de VR' : '🥽 Entrar en VR';
+      else btn.textContent = active ? '⏹ Salir de AR' : '📷 Entrar en AR';
+    }
+
+    if (mode === 'vr') {
+      const floating = document.getElementById('floating-vr-btn');
+      if (floating) floating.textContent = active ? '⏹ Salir VR' : '🥽 VR';
+    }
   }
 
   // ── Reticle ──────────────────────────────────────────────────────────────────

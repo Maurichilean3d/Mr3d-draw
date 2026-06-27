@@ -21,8 +21,13 @@ window.xrDiag = xrDiag;
 
 // ── Build renderer & scene immediately (before launch screen) ────────────────
 const canvas = document.getElementById('gl-canvas');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: true,
+  alpha: true,
+  powerPreference: 'high-performance',
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, deviceInfo.isQuest ? 1.25 : 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -41,10 +46,12 @@ scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 const sun = new THREE.DirectionalLight(0xffffff, 1.2);
 sun.position.set(8, 12, 6);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(deviceInfo.isQuest ? 1024 : 2048, deviceInfo.isQuest ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { near: 0.1, far: 50, left: -15, right: 15, top: 15, bottom: -15 });
 scene.add(sun);
-scene.add(Object.assign(new THREE.DirectionalLight(0x4488ff, 0.3), { position: new THREE.Vector3(-5, 3, -5) }));
+const fillLight = new THREE.DirectionalLight(0x4488ff, 0.3);
+fillLight.position.set(-5, 3, -5);
+scene.add(fillLight);
 
 const grid = new THREE.GridHelper(20, 20, 0x0f3460, 0x0f3460);
 grid.material.opacity = 0.5; grid.material.transparent = true;
@@ -171,9 +178,6 @@ function initEnv(env) {
   logBtn.style.cssText = 'margin-left:8px;border-color:#ffd43b;color:#ffd43b;';
   logBtn.onclick = () => { xrDiag.show(); xrDiag.run(); };
   document.getElementById('topbar').appendChild(logBtn);
-
-  // Auto-run diagnostic silently on load (fills log without showing panel)
-  xrDiag.run().catch(() => {});
 
   updateStatusBar();
 }
@@ -411,10 +415,10 @@ function buildXRButtons() {
   if (!panel) return;
   panel.innerHTML = `
     <div class="panel-title">WebXR</div>
-    <button onclick="enterVR()" style="width:100%;padding:10px;background:#e94560;border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:13px;margin-bottom:6px;">
+    <button id="xr-vr-btn" onclick="enterVR()" style="width:100%;padding:10px;background:#e94560;border:none;color:#fff;border-radius:6px;cursor:pointer;font-size:13px;margin-bottom:6px;">
       🥽 Entrar / Salir VR
     </button>
-    <button onclick="enterAR()" style="width:100%;padding:10px;background:#0f3460;border:1px solid #e94560;color:#fff;border-radius:6px;cursor:pointer;font-size:13px;">
+    <button id="xr-ar-btn" onclick="enterAR()" style="width:100%;padding:10px;background:#0f3460;border:1px solid #e94560;color:#fff;border-radius:6px;cursor:pointer;font-size:13px;">
       📷 Entrar / Salir AR
     </button>
     <div class="info-text" style="margin-top:8px;">
