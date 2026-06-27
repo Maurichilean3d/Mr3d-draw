@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MR3D Draw — WebMR Blender Modeler</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #1a1a2e;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+    }
+
+    canvas { display: block; }
+
+    /* ── Top bar ── */
+    #topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 40px;
+      background: #16213e;
+      border-bottom: 1px solid #0f3460;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 8px;
+      z-index: 100;
+    }
+
+    #topbar .logo {
+      font-weight: 700;
+      font-size: 15px;
+      color: #e94560;
+      letter-spacing: 1px;
+      margin-right: 16px;
+    }
+
+    .mode-btn {
+      padding: 4px 14px;
+      border-radius: 4px;
+      border: 1px solid #0f3460;
+      background: transparent;
+      color: #aaa;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .mode-btn.active {
+      background: #e94560;
+      border-color: #e94560;
+      color: #fff;
+    }
+    .mode-btn:hover:not(.active) { border-color: #e94560; color: #e94560; }
+
+    #mode-label {
+      margin-left: auto;
+      font-size: 11px;
+      color: #555;
+    }
+
+    /* ── Left toolbar ── */
+    #toolbar {
+      position: fixed;
+      top: 50px;
+      left: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      z-index: 100;
+    }
+
+    .tool-section { margin-top: 8px; }
+    .tool-section-label {
+      font-size: 9px;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 2px 6px;
+    }
+
+    .tool-btn {
+      width: 42px; height: 42px;
+      border-radius: 6px;
+      border: 1px solid #0f3460;
+      background: #16213e;
+      color: #aaa;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .15s;
+      position: relative;
+    }
+    .tool-btn:hover { border-color: #e94560; color: #e94560; }
+    .tool-btn.active { background: #e94560; border-color: #e94560; color: #fff; }
+    .tool-btn[title]:hover::after {
+      content: attr(title);
+      position: absolute;
+      left: 48px; top: 50%;
+      transform: translateY(-50%);
+      background: #000;
+      color: #fff;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    /* ── Right panel ── */
+    #rightpanel {
+      position: fixed;
+      top: 50px; right: 0;
+      width: 220px;
+      background: #16213e;
+      border-left: 1px solid #0f3460;
+      bottom: 0;
+      overflow-y: auto;
+      z-index: 100;
+      padding: 10px;
+    }
+
+    .panel-section {
+      margin-bottom: 14px;
+      border-bottom: 1px solid #0f3460;
+      padding-bottom: 10px;
+    }
+    .panel-title {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #e94560;
+      margin-bottom: 8px;
+    }
+
+    .prop-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      font-size: 11px;
+    }
+    .prop-label { color: #888; min-width: 60px; }
+    .prop-input {
+      width: 100px;
+      background: #0f3460;
+      border: 1px solid #1a4a8a;
+      color: #e0e0e0;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      text-align: right;
+    }
+    .prop-input:focus { outline: none; border-color: #e94560; }
+
+    .select-mode-row {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .sel-btn {
+      flex: 1;
+      padding: 5px 0;
+      border-radius: 4px;
+      border: 1px solid #0f3460;
+      background: transparent;
+      color: #aaa;
+      font-size: 10px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .sel-btn.active { background: #e94560; border-color: #e94560; color: #fff; }
+    .sel-btn:hover:not(.active) { border-color: #e94560; }
+
+    .info-text { font-size: 10px; color: #555; line-height: 1.6; }
+
+    /* ── Bottom status bar ── */
+    #statusbar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 24px;
+      background: #16213e;
+      border-top: 1px solid #0f3460;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      font-size: 10px;
+      color: #555;
+      gap: 20px;
+      z-index: 100;
+    }
+    #statusbar span { color: #888; }
+
+    /* ── Primitives popup ── */
+    #primitives-popup {
+      position: fixed;
+      top: 50px; left: 60px;
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 6px;
+      padding: 6px;
+      display: none;
+      flex-direction: column;
+      gap: 3px;
+      z-index: 200;
+      box-shadow: 0 4px 20px rgba(0,0,0,.5);
+    }
+    #primitives-popup.visible { display: flex; }
+    .prim-item {
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #ccc;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .prim-item:hover { background: #0f3460; color: #fff; }
+    .prim-icon { font-size: 16px; }
+
+    /* ── XR button ── */
+    #xr-btn {
+      position: fixed;
+      bottom: 36px; right: 230px;
+      padding: 8px 18px;
+      background: #e94560;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      z-index: 100;
+      display: none;
+    }
+    #xr-btn:hover { background: #c73652; }
+
+    /* ── Selection highlight ── */
+    .selected-info {
+      background: #0f3460;
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-size: 10px;
+      color: #ccc;
+      margin-top: 4px;
+    }
+
+    /* Hide edit-mode only panels in object mode */
+    .edit-only { display: none; }
+    body.edit-mode .edit-only { display: block; }
+    body.edit-mode .object-only { display: none; }
+
+    #overlay-hint {
+      position: fixed;
+      top: 50px; left: 60px; right: 220px;
+      pointer-events: none;
+      z-index: 50;
+      display: flex;
+      align-items: flex-end;
+      padding: 12px;
+      bottom: 28px;
+    }
+    #hint-box {
+      background: rgba(0,0,0,.55);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 11px;
+      color: #aaa;
+      line-height: 1.8;
+      max-width: 340px;
+    }
+    #hint-box b { color: #e94560; }
+  </style>
+</head>
+<body>
+
+<!-- Canvas -->
+<div id="canvas-container">
+  <canvas id="gl-canvas"></canvas>
+</div>
+
+<!-- Top bar -->
+<div id="topbar">
+  <span class="logo">MR3D</span>
+  <button class="mode-btn active" id="btn-object" onclick="setMode('object')">Modo Objeto</button>
+  <button class="mode-btn" id="btn-edit" onclick="setMode('edit')">Modo Edición (Tab)</button>
+  <span id="mode-label">Modo Objeto — Ningún objeto seleccionado</span>
+</div>
+
+<!-- Left toolbar -->
+<div id="toolbar">
+
+  <div class="tool-section">
+    <div class="tool-section-label">Crear</div>
+    <button class="tool-btn" id="tb-add" title="Añadir Primitiva (Shift+A)" onclick="togglePrimPopup()">＋</button>
+  </div>
+
+  <div class="tool-section">
+    <div class="tool-section-label">Selec</div>
+    <button class="tool-btn active" id="tb-select" title="Seleccionar (S)" onclick="setTool('select')">↖</button>
+    <button class="tool-btn" id="tb-move" title="Mover (G)" onclick="setTool('move')">✥</button>
+    <button class="tool-btn" id="tb-rotate" title="Rotar (R)" onclick="setTool('rotate')">↻</button>
+    <button class="tool-btn" id="tb-scale" title="Escalar (E)" onclick="setTool('scale')">⤡</button>
+  </div>
+
+  <div class="tool-section">
+    <div class="tool-section-label">Vista</div>
+    <button class="tool-btn" id="tb-orbit" title="Órbita" onclick="setNavMode('orbit')">🌐</button>
+    <button class="tool-btn" id="tb-pan" title="Paneo (Shift+Rueda)" onclick="setNavMode('pan')">🖐</button>
+  </div>
+
+  <div class="tool-section edit-only">
+    <div class="tool-section-label">Editar</div>
+    <button class="tool-btn" id="tb-extrude" title="Extruir (E)" onclick="doExtrude()">⬡</button>
+    <button class="tool-btn" id="tb-loop" title="Loop Cut (Ctrl+R)" onclick="doLoopCut()">⊟</button>
+    <button class="tool-btn" id="tb-bevel" title="Bevel (Ctrl+B)" onclick="doBevel()">◈</button>
+    <button class="tool-btn" id="tb-delete" title="Eliminar (X)" onclick="doDelete()">✕</button>
+    <button class="tool-btn" id="tb-merge" title="Fusionar (M)" onclick="doMerge()">◎</button>
+    <button class="tool-btn" id="tb-fill" title="Rellenar (F)" onclick="doFill()">▣</button>
+  </div>
+</div>
+
+<!-- Primitives popup -->
+<div id="primitives-popup">
+  <div class="prim-item" onclick="addPrimitive('cube')"><span class="prim-icon">⬛</span> Cubo</div>
+  <div class="prim-item" onclick="addPrimitive('sphere')"><span class="prim-icon">⚪</span> Esfera UV</div>
+  <div class="prim-item" onclick="addPrimitive('icosphere')"><span class="prim-icon">🔷</span> Icosfera</div>
+  <div class="prim-item" onclick="addPrimitive('cylinder')"><span class="prim-icon">🥫</span> Cilindro</div>
+  <div class="prim-item" onclick="addPrimitive('cone')"><span class="prim-icon">🔺</span> Cono</div>
+  <div class="prim-item" onclick="addPrimitive('torus')"><span class="prim-icon">⭕</span> Toro</div>
+  <div class="prim-item" onclick="addPrimitive('plane')"><span class="prim-icon">⬜</span> Plano</div>
+  <div class="prim-item" onclick="addPrimitive('monkey')"><span class="prim-icon">🐒</span> Monkey (Suzanne)</div>
+</div>
+
+<!-- Right panel -->
+<div id="rightpanel">
+
+  <div class="panel-section object-only">
+    <div class="panel-title">Escena</div>
+    <div id="scene-list" style="font-size:11px; color:#888;">
+      (vacía)
+    </div>
+  </div>
+
+  <div class="panel-section object-only" id="obj-transform" style="display:none">
+    <div class="panel-title">Transformar</div>
+    <div class="prop-row"><span class="prop-label">Pos X</span><input class="prop-input" id="px" type="number" step="0.1" onchange="applyTransformInput()"/></div>
+    <div class="prop-row"><span class="prop-label">Pos Y</span><input class="prop-input" id="py" type="number" step="0.1" onchange="applyTransformInput()"/></div>
+    <div class="prop-row"><span class="prop-label">Pos Z</span><input class="prop-input" id="pz" type="number" step="0.1" onchange="applyTransformInput()"/></div>
+    <div class="prop-row"><span class="prop-label">Rot X</span><input class="prop-input" id="rx" type="number" step="1" onchange="applyTransformInput()"/></div>
+    <div class="prop-row"><span class="prop-label">Rot Y</span><input class="prop-input" id="ry" type="number" step="1" onchange="applyTransformInput()"/></div>
+    <div class="prop-row"><span class="prop-label">Rot Z</span><input class="prop-input" id="rz" type="number" step="1" onchange="applyTransformInput()"/></div>
+    <div class="prop-row"><span class="prop-label">Esc X</span><input class="prop-input" id="sx" type="number" step="0.1" onchange="applyTransformInput()"/></div>
+    <div class="prop-row"><span class="prop-label">Esc Y</span><input class="prop-input" id="sy" type="number" step="0.1" onchange="applyTransformInput()"/></div>
+    <div class="prop-row"><span class="prop-label">Esc Z</span><input class="prop-input" id="sz" type="number" step="0.1" onchange="applyTransformInput()"/></div>
+  </div>
+
+  <div class="panel-section edit-only">
+    <div class="panel-title">Modo Selección</div>
+    <div class="select-mode-row">
+      <button class="sel-btn active" id="sel-vert" onclick="setSelectMode('vertex')">Vértice</button>
+      <button class="sel-btn" id="sel-edge" onclick="setSelectMode('edge')">Borde</button>
+      <button class="sel-btn" id="sel-face" onclick="setSelectMode('face')">Cara</button>
+    </div>
+    <div class="selected-info" id="sel-info">Sin selección</div>
+  </div>
+
+  <div class="panel-section edit-only">
+    <div class="panel-title">Operaciones Rápidas</div>
+    <div class="info-text">
+      <b style="color:#e94560">E</b> — Extruir selección<br>
+      <b style="color:#e94560">Ctrl+R</b> — Loop Cut<br>
+      <b style="color:#e94560">Ctrl+B</b> — Bevel<br>
+      <b style="color:#e94560">X / Del</b> — Eliminar<br>
+      <b style="color:#e94560">M</b> — Fusionar<br>
+      <b style="color:#e94560">F</b> — Rellenar cara<br>
+      <b style="color:#e94560">A</b> — Selec. todo<br>
+      <b style="color:#e94560">Alt+A</b> — Deselec. todo<br>
+    </div>
+  </div>
+
+  <div class="panel-section object-only">
+    <div class="panel-title">Accesos Rápidos</div>
+    <div class="info-text">
+      <b style="color:#e94560">Shift+A</b> — Añadir primitiva<br>
+      <b style="color:#e94560">Tab</b> — Modo Edición<br>
+      <b style="color:#e94560">G</b> — Mover<br>
+      <b style="color:#e94560">R</b> — Rotar<br>
+      <b style="color:#e94560">E</b> — Escalar<br>
+      <b style="color:#e94560">X / Del</b> — Eliminar<br>
+      <b style="color:#e94560">Num 1/3/7</b> — Vista<br>
+      <b style="color:#e94560">Num 5</b> — Orto/Persp<br>
+      <b style="color:#e94560">Z</b> — Wireframe toggle<br>
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-title">Material</div>
+    <div class="prop-row">
+      <span class="prop-label">Color</span>
+      <input type="color" id="mat-color" value="#4a9eff" style="width:100px;height:22px;border:none;background:none;cursor:pointer;" onchange="applyMaterial()"/>
+    </div>
+    <div class="prop-row">
+      <span class="prop-label">Rugosidad</span>
+      <input class="prop-input" id="mat-rough" type="range" min="0" max="1" step="0.01" value="0.5" style="width:100px" onchange="applyMaterial()"/>
+    </div>
+    <div class="prop-row">
+      <span class="prop-label">Metálico</span>
+      <input class="prop-input" id="mat-metal" type="range" min="0" max="1" step="0.01" value="0" style="width:100px" onchange="applyMaterial()"/>
+    </div>
+    <div class="prop-row">
+      <span class="prop-label">Opacidad</span>
+      <input class="prop-input" id="mat-opacity" type="range" min="0" max="1" step="0.01" value="1" style="width:100px" onchange="applyMaterial()"/>
+    </div>
+    <div class="prop-row">
+      <span class="prop-label">Wireframe</span>
+      <input type="checkbox" id="mat-wire" onchange="applyMaterial()"/>
+    </div>
+  </div>
+
+  <div class="panel-section">
+    <div class="panel-title">Vista WebMR</div>
+    <button onclick="enterXR()" style="width:100%;padding:8px;background:#e94560;border:none;color:#fff;border-radius:4px;cursor:pointer;font-size:12px;">
+      🥽 Entrar en XR
+    </button>
+    <div class="info-text" style="margin-top:6px;">
+      Requiere dispositivo AR/VR compatible con WebXR.
+    </div>
+  </div>
+</div>
+
+<!-- Hint overlay -->
+<div id="overlay-hint">
+  <div id="hint-box">
+    <b>Modo Objeto</b> — Clic para seleccionar · Rueda para zoom · Clic+arrastrar para orbitar<br>
+    <b>Shift+A</b> para añadir una primitiva · <b>Tab</b> para entrar al modo edición
+  </div>
+</div>
+
+<!-- Status bar -->
+<div id="statusbar">
+  <span id="st-mode">MODO OBJETO</span>
+  <span id="st-verts">Vért: 0</span>
+  <span id="st-edges">Bord: 0</span>
+  <span id="st-faces">Car: 0</span>
+  <span id="st-sel">Sel: 0</span>
+  <span style="margin-left:auto" id="st-tool">Herramienta: Seleccionar</span>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
