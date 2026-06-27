@@ -154,7 +154,63 @@ function initEnv(env) {
   };
   document.getElementById('topbar').appendChild(changeBtn);
 
+  // Always-visible VR button (bottom-right), works on Quest without launch screen
+  buildFloatingVRButton();
+
   updateStatusBar();
+}
+
+function buildFloatingVRButton() {
+  if (document.getElementById('floating-vr-btn')) return;
+
+  const btn = document.createElement('button');
+  btn.id = 'floating-vr-btn';
+  btn.innerHTML = '🥽 VR';
+  btn.title = 'Entrar en VR (Meta Quest)';
+  btn.onclick = () => xrManager.enterVR(); // direct call = gesture safe
+
+  const style = document.createElement('style');
+  style.textContent = `
+    #floating-vr-btn {
+      position: fixed;
+      bottom: 36px; right: 230px;
+      padding: 10px 20px;
+      background: #e94560;
+      border: none; border-radius: 8px;
+      color: #fff; font-size: 15px; font-weight: 600;
+      cursor: pointer; z-index: 500;
+      box-shadow: 0 4px 20px rgba(233,69,96,.45);
+      transition: background .15s, transform .1s;
+    }
+    #floating-vr-btn:hover { background: #c73652; transform: translateY(-1px); }
+    #floating-vr-btn:active { transform: scale(.97); }
+    @media (max-width: 600px) { #floating-vr-btn { right: 10px; bottom: 90px; } }
+  `;
+  document.head.appendChild(style);
+  document.body.appendChild(btn);
+
+  // Show XR diagnostic in console + status bar
+  _logXRDiag();
+}
+
+function _logXRDiag() {
+  if (!navigator.xr) {
+    console.warn('[XR] navigator.xr no disponible');
+    return;
+  }
+  navigator.xr.isSessionSupported('immersive-vr').then(ok => {
+    console.log('[XR] immersive-vr supported:', ok);
+    const btn = document.getElementById('floating-vr-btn');
+    if (btn) {
+      btn.title = ok
+        ? 'VR listo ✓ — Haz clic para entrar'
+        : 'VR: no detectado (¿HTTPS? ¿Meta Quest Browser?)';
+      if (!ok) btn.style.background = '#555';
+    }
+  });
+  navigator.xr.isSessionSupported('immersive-ar').then(ok => {
+    console.log('[XR] immersive-ar supported:', ok);
+  });
 }
 
 // ── Globals for HTML onclick handlers ─────────────────────────────────────────
@@ -239,12 +295,8 @@ window.applyMaterial = () => {
   m.needsUpdate = true;
 };
 
-// VR/AR buttons in panel call these
-window.enterXR = () => {
-  if (deviceInfo.supportsVR) xrManager.enterVR();
-  else if (deviceInfo.supportsAR) xrManager.enterAR();
-  else alert('WebXR no disponible en este dispositivo/navegador.');
-};
+// VR/AR — always call manager directly (gesture-safe)
+window.enterXR = () => xrManager.enterVR();
 window.enterVR = () => xrManager.enterVR();
 window.enterAR = () => xrManager.enterAR();
 
